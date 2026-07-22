@@ -15,8 +15,15 @@ type VoteResult = {
   count: number
 }
 
+type DetailedVote = {
+  token_code: string
+  choice: string
+  created_at: string
+}
+
 export default function AdminPage() {
   const [results, setResults] = useState<VoteResult[]>([])
+  const [detailedVotes, setDetailedVotes] = useState<DetailedVote[]>([])
   const [totalVotes, setTotalVotes] = useState(0)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
@@ -33,9 +40,18 @@ export default function AdminPage() {
 
   const fetchResults = async () => {
     setLoading(true)
+    
+    // Mengambil data suara beserta informasi token terkait (mendukung foreign key token_id)
     const { data, error } = await supabase
       .from('votes')
-      .select('choice')
+      .select(`
+        choice,
+        created_at,
+        token_id,
+        tokens (
+          token_code
+        )
+      `)
 
     if (error) {
       console.error('Gagal mengambil data:', error)
@@ -43,9 +59,38 @@ export default function AdminPage() {
       return
     }
 
-    const counts: { [key: string]: number } = {}
-    data.forEach((row: { choice: string }) => {
-      counts[row.choice] = (counts[row.choice] || 0) + 1
+    const rows = data || []
+
+    // Format data untuk detail per token (untuk keperluan PDF)
+    const formattedDetails: DetailedVote[] = rows.map((row: any) => {
+      // Mengambil kode token dari relasi object ataupun fallback langsung jika berupa string/id
+      let tokenCodeText = 'Tanpa Token'
+      if (row.tokens) {
+        if (Array.isArray(row.tokens)) {
+          tokenCodeText = row.tokens[0]?.token_code || 'Tanpa Token'
+        } else if (typeof row.tokens === 'object' && row.tokens !== null) {
+          tokenCodeText = row.tokens.token_code || 'Tanpa Token'
+        }
+      } else if (row.token_id) {
+        tokenCodeText = `Token ID: ${row.token_id}`
+      }
+
+      return {
+        token_code: tokenCodeText,
+        choice: row.choice,
+        created_at: row.created_at ? new Date(row.created_at).toLocaleString('id-ID') : '-'
+      }
+    })
+
+    setDetailedVotes(formattedDetails)
+
+    // Hitung rekapitulasi suara per pilihan untuk tampilan UI web & ringkasan PDF
+    const counts: Record<string, number> = {}
+    rows.forEach((row: any) => {
+      const choiceName = row.choice
+      if (choiceName) {
+        counts[choiceName] = (counts[choiceName] || 0) + 1
+      }
     })
 
     const formattedResults: VoteResult[] = Object.keys(counts).map((choice) => ({
@@ -54,13 +99,14 @@ export default function AdminPage() {
     }))
 
     setResults(formattedResults)
-    setTotalVotes(data.length)
+    setTotalVotes(rows.length)
     setLoading(false)
   }
 
   const handleDownloadPDF = () => {
     const doc = new jsPDF()
 
+    // Header Laporan
     doc.setFont("helvetica", "bold")
     doc.setFontSize(16)
     doc.text("REKAPITULASI MONITORING VOTING GATHERING 2026", 14, 20)
@@ -73,22 +119,65 @@ export default function AdminPage() {
     doc.setLineWidth(0.5)
     doc.line(14, 40, 196, 40)
 
-    let yPos = 50
-    doc.setFont("helvetica", "bold")
-    doc.text("Pilihan / Kandidat", 14, yPos)
-    doc.text("Jumlah Suara", 140, yPos)
-    doc.text("Persentase", 170, yPos)
+    let yPos = 48
 
-    yPos += 8
+    // BAGIAN 1: Ringkasan Persentase Dominasi Pilihan
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(12)
+    doc.text("1. Ringkasan Persentase Pilihan", 14, yPos)
+    
+    yPos += 7
+    doc.setFontSize(10)
+    doc.text("Pilihan / Kandidat", 14, yPos)
+    doc.text("Jumlah", 130, yPos)
+    doc.text("Persentase", 165, yPos)
+
+    yPos += 5
+    doc.setFont("helvetica", "normal")
+    results.forEach((res) => {
+      const percentage = totalVotes > 0 ? Math.round((res.count / totalVotes) * 100) : 0
+      doc.text(`- ${res.choice}`, 14, yPos)
+      doc.text(`${res.count} suara`, 130, yPos)
+      doc.text(`${percentage}%`, 165, yPos)
+      yPos += 7
+    })
+
+    yPos += 5
+    doc.setLineWidth(0.2)
+    doc.line(14, yPos, 196, yPos)
+    yPos += 10
+
+    // BAGIAN 2: Detail Riwayat Token Memilih Apa
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(12)
+    doc.text("2. Detail Riwayat Pilihan Berdasarkan Token", 14, yPos)
+
+    yPos += 7
+    doc.setFontSize(10)
+    doc.text("No", 14, yPos)
+    doc.text("Token Pemilih", 30, yPos)
+    doc.text("Pilihan", 90, yPos)
+    doc.text("Waktu Memilih", 140, yPos)
+
+    yPos += 6
     doc.setFont("helvetica", "normal")
 
-    results.forEach((res, index) => {
-      const percentage = totalVotes > 0 ? Math.round((res.count / totalVotes) * 100) : 0
-      doc.text(`${index + 1}. ${res.choice}`, 14, yPos)
-      doc.text(`${res.count} suara`, 140, yPos)
-      doc.text(`${percentage}%`, 170, yPos)
-      yPos += 10
-    })
+    if (detailedVotes.length === 0) {
+      doc.text("Belum ada data suara masuk.", 14, yPos)
+    } else {
+      detailedVotes.forEach((vote, index) => {
+        // Pagination sederhana jika halaman PDF penuh
+        if (yPos > 275) {
+          doc.addPage()
+          yPos = 20
+        }
+        doc.text(`${index + 1}`, 14, yPos)
+        doc.text(`${vote.token_code}`, 30, yPos)
+        doc.text(`${vote.choice}`, 90, yPos)
+        doc.text(`${vote.created_at}`, 140, yPos)
+        yPos += 7
+      })
+    }
 
     doc.save('Hasil-Monitoring-Voting-2026.pdf')
   }

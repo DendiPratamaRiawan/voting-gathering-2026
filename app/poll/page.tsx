@@ -25,9 +25,16 @@ export default function PollPage() {
 
   const handleConfirmSubmit = async () => {
     setLoading(true)
+
+    // Ambil ID token yang disimpan saat verifikasi token sebelumnya
+    const tokenId = sessionStorage.getItem('token_id')
+
     const { error } = await supabase
       .from('votes')
-      .insert([{ choice: selectedOption }])
+      .insert([{ 
+        choice: selectedOption,
+        token_id: tokenId ? parseInt(tokenId) : null // Menyertakan token_id agar tercatat di database & laporan PDF
+      }])
 
     if (error) {
       alert('Gagal mengirim polling. Silakan coba lagi.')

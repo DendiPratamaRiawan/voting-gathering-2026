@@ -66,9 +66,10 @@ export default function TokenPage() {
       return
     }
 
-    // Simpan session pemilih dan alihkan ke halaman voting
+    // Simpan session pemilih, ID token database, dan alihkan ke halaman voting
     sessionStorage.setItem('has_token', 'true')
     sessionStorage.setItem('voted_token', cleanToken)
+    sessionStorage.setItem('token_id', tokenData.id.toString()) // <-- INI TAMBAHAN UTAMA AGAR ID TOKEN TEREKAM
     router.push('/poll')
   }
 
