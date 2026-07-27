@@ -48,28 +48,18 @@ export default function TokenPage() {
       return
     }
 
+    // Cek jika token sudah pernah digunakan sebelumnya
     if (tokenData.used_count >= tokenData.max_uses) {
       setError('Token ini sudah pernah digunakan sebelumnya!')
       setLoading(false)
       return
     }
 
-    // 3. UPDATE STATUS TOKEN MENJADI TERPAKAI
-    const { error: updateError } = await supabase
-      .from('tokens')
-      .update({ used_count: tokenData.used_count + 1 })
-      .eq('id', tokenData.id)
-
-    if (updateError) {
-      setError('Terjadi kesalahan sistem. Coba lagi.')
-      setLoading(false)
-      return
-    }
-
-    // Simpan session pemilih, ID token database, dan alihkan ke halaman voting
+    // 3. Simpan session pemilih dan ID token database TANPA mengupdate used_count terlebih dahulu.
+    // (Digunakan agar token belum hangus jika user batal atau keluar sebelum mengirim pilihan).
     sessionStorage.setItem('has_token', 'true')
     sessionStorage.setItem('voted_token', cleanToken)
-    sessionStorage.setItem('token_id', tokenData.id.toString()) // <-- INI TAMBAHAN UTAMA AGAR ID TOKEN TEREKAM
+    sessionStorage.setItem('token_id', tokenData.id.toString()) 
     router.push('/poll')
   }
 

@@ -17,10 +17,10 @@ export default function PollPage() {
     }
   }, [router])
 
+  // Opsi "Tidak Ikut" sudah dihapus, hanya menyisakan 2 pilihan
   const options = [
     { id: 'Family Gathering', label: 'A. Family Gathering', icon: '👥' },
-    { id: 'Employee Gathering', label: 'B. Employee Gathering', icon: '💼' },
-    { id: 'Tidak Ikut', label: 'C. Tidak Ikut', icon: '👤' }
+    { id: 'Employee Gathering', label: 'B. Employee Gathering', icon: '💼' }
   ]
 
   const handleConfirmSubmit = async () => {
