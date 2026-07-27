@@ -17,26 +17,59 @@ export default function PollPage() {
     }
   }, [router])
 
-  // Opsi "Tidak Ikut" sudah dihapus, hanya menyisakan 2 pilihan
+  // Opsi gathering dengan ikon yang lebih jelas dan kontras di latar belakang terang
   const options = [
-    { id: 'Family Gathering', label: 'A. Family Gathering', icon: '👥' },
-    { id: 'Employee Gathering', label: 'B. Employee Gathering', icon: '💼' }
+    { id: 'Family Gathering', label: 'A. Family Gathering', icon: '👨‍👩‍👧‍👦', bg: 'bg-indigo-50 text-indigo-600 border-indigo-100' },
+    { id: 'Employee Gathering', label: 'B. Employee Gathering', icon: '🧑‍💼', bg: 'bg-emerald-50 text-emerald-600 border-emerald-100' }
   ]
 
   const handleConfirmSubmit = async () => {
     setLoading(true)
 
-    // Ambil ID token yang disimpan saat verifikasi token sebelumnya
-    const tokenId = sessionStorage.getItem('token_id')
+    const tokenIdStr = sessionStorage.getItem('token_id')
+    if (!tokenIdStr) {
+      alert('Sesi token tidak ditemukan. Silakan login kembali.')
+      router.push('/token')
+      return
+    }
 
-    const { error } = await supabase
+    const tokenId = parseInt(tokenIdStr)
+
+    // 1. Validasi ulang ke database apakah token ini sudah dipakai orang lain
+    const { data: tokenCheck, error: checkError } = await supabase
+      .from('tokens')
+      .select('*')
+      .eq('id', tokenId)
+      .single()
+
+    if (checkError || !tokenCheck || tokenCheck.used_count >= tokenCheck.max_uses) {
+      alert('Token ini sudah digunakan atau tidak valid!')
+      setLoading(false)
+      router.push('/token')
+      return
+    }
+
+    // 2. KUNCI TOKEN: Update used_count menjadi terpakai saat dikirim
+    const { error: updateError } = await supabase
+      .from('tokens')
+      .update({ used_count: tokenCheck.used_count + 1 })
+      .eq('id', tokenId)
+
+    if (updateError) {
+      alert('Gagal memproses token. Silakan coba lagi.')
+      setLoading(false)
+      return
+    }
+
+    // 3. Masukkan pilihan suara ke tabel votes beserta token_id-nya[cite: 4]
+    const { error: voteError } = await supabase
       .from('votes')
       .insert([{ 
         choice: selectedOption,
-        token_id: tokenId ? parseInt(tokenId) : null // Menyertakan token_id agar tercatat di database & laporan PDF
+        token_id: tokenId 
       }])
 
-    if (error) {
+    if (voteError) {
       alert('Gagal mengirim polling. Silakan coba lagi.')
       setLoading(false)
       return
@@ -110,7 +143,10 @@ export default function PollPage() {
                       />
                       <span className="font-bold text-slate-800 text-sm">{opt.label}</span>
                     </div>
-                    <span className="text-xl">{opt.icon}</span>
+                    {/* Wadah ikon berlatar belakang agar terlihat kontras dan jelas */}
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl border ${opt.bg} shadow-sm`}>
+                      {opt.icon}
+                    </div>
                   </label>
                 ))}
               </div>
